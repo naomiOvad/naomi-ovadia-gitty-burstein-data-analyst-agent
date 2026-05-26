@@ -1,0 +1,38 @@
+# Environment & secrets
+.env
+*.env
+
+# Python
+__pycache__/
+*.py[cod]
+*.so
+*.egg-info/
+.Python
+build/
+dist/
+
+# Virtual environment
+venv/
+.venv/
+env/
+
+# Dataset (downloaded at runtime)
+data/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+
+# OS
+.DS_Store
+Thumbs.db
+
+# LangGraph checkpoints (for Task 2)
+*.sqlite
+*.db
+checkpoints/
+
+# Assignment material (instructor's content, not our work)
+From AI Model to AI Agent - Assignment 3.*
+Nebius - Week 5 - Advanced Agents.*
