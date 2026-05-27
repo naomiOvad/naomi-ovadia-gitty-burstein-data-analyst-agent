@@ -28,10 +28,12 @@ data/
 .DS_Store
 Thumbs.db
 
-# LangGraph checkpoints (for Task 2)
+# LangGraph checkpoints + per-user profiles (Task 2)
 *.sqlite
+*.sqlite-*
 *.db
 checkpoints/
+context/
 
 # Assignment material (instructor's content, not our work)
 From AI Model to AI Agent - Assignment 3.*

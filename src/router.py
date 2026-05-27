@@ -10,9 +10,9 @@ Out-of-scope queries must be detected here so the agent never answers them
 from general LLM knowledge.
 """
 
-from typing import Literal
+from typing import List, Literal, Optional
 
-from langchain_core.messages import HumanMessage, SystemMessage
+from langchain_core.messages import AIMessage, BaseMessage, HumanMessage, SystemMessage
 from pydantic import BaseModel, Field
 
 from src.config import ROUTER_MODEL, get_llm
@@ -97,6 +97,32 @@ Important rules:
 - If the question references our data ("our dataset", "the categories",
   "people in our data wanting refunds"), prefer structured or unstructured.
 
+Follow-up questions (very important):
+- The user may be in the middle of a multi-turn conversation. The latest
+  question can be a follow-up that only makes sense given the prior turns
+  (e.g. "show me 3 more", "what about refunds?", "what is the total of the
+  last two?", "and SHIPPING?").
+- When the recent conversation is provided below, USE IT to interpret the
+  latest question. Such follow-ups are usually 'structured' (they ultimately
+  refer to data: more examples, another count, arithmetic over earlier
+  counts) — NOT 'out_of_scope'.
+- A question that asks for arithmetic over earlier numerical answers
+  (e.g. "total of the last two", "sum them") is 'structured'.
+
+Personal / profile-related messages (also important):
+- The agent keeps a long-term profile of each user. The following are
+  IN-SCOPE (NOT out_of_scope), because the agent itself must respond to
+  them, even if they don't query the dataset:
+  - The user introducing themselves ("Hi, I'm Naomi", "My name is X",
+    "I work as Y", "I'm interested in Z") -> 'unstructured'.
+  - The user expressing preferences ("I prefer short answers",
+    "I love refund data") -> 'unstructured'.
+  - The user asking what the agent remembers / knows about them
+    ("What do you remember about me?", "Do you know who I am?",
+    "Remind me what you know") -> 'unstructured'.
+- Only classify as out_of_scope if the question is BOTH unrelated to the
+  dataset AND not about the user themselves.
+
 Return your classification and a one-sentence reason."""
 
 
@@ -110,17 +136,53 @@ Return your classification and a one-sentence reason."""
 _router_llm = get_llm(ROUTER_MODEL).with_structured_output(RouteDecision)
 
 
-def route_query(question: str) -> RouteDecision:
+def _format_history(history: List[BaseMessage], max_turns: int = 4) -> str:
+    """Format the last few messages as a short conversation transcript.
+
+    Only includes the textual content of HumanMessage and AIMessage; skips
+    tool calls and tool results to keep the router's input compact.
+    """
+    relevant: list[str] = []
+    for msg in history:
+        if isinstance(msg, HumanMessage) and msg.content:
+            relevant.append(f"User: {msg.content}")
+        elif isinstance(msg, AIMessage) and msg.content:
+            # Strip any chain-of-thought tags some models emit.
+            content = str(msg.content)
+            if "</think>" in content:
+                content = content.split("</think>", 1)[-1].strip()
+            if content:
+                relevant.append(f"Assistant: {content}")
+    return "\n".join(relevant[-(2 * max_turns):])
+
+
+def route_query(
+    question: str,
+    history: Optional[List[BaseMessage]] = None,
+) -> RouteDecision:
     """Classify a user query into structured / unstructured / out_of_scope.
 
     Args:
-        question: The user's question, in natural language.
+        question: The user's latest question, in natural language.
+        history: Optional prior messages from the same session. When the
+            current question is a follow-up ("3 more", "what about X",
+            "total of the last two"), this lets the router classify it
+            correctly instead of treating it as out_of_scope.
 
     Returns:
         A RouteDecision with the category and a one-sentence reason.
     """
+    user_content = question
+    if history:
+        transcript = _format_history(history)
+        if transcript:
+            user_content = (
+                "Recent conversation (for context only):\n"
+                f"{transcript}\n\n"
+                f"Latest user question to classify:\n{question}"
+            )
     messages = [
         SystemMessage(content=ROUTER_SYSTEM_PROMPT),
-        HumanMessage(content=question),
+        HumanMessage(content=user_content),
     ]
     return _router_llm.invoke(messages)

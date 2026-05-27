@@ -177,14 +177,23 @@ def _handle_command(cmd: str) -> bool:
     return False
 
 
-def _run_one_turn(question: str) -> None:
-    """Stream the graph for one user turn, printing events as they arrive."""
+def _run_one_turn(question: str, session_id: str) -> None:
+    """Stream the graph for one user turn, printing events as they arrive.
+
+    Args:
+        question: The user's question.
+        session_id: Used as the LangGraph `thread_id` so the checkpointer
+            (Task 2a) can persist + restore conversation state per session.
+    """
     final_answer: Optional[str] = None
     seen_message_ids: set = set()
     try:
         stream = graph.stream(
             {"messages": [HumanMessage(content=question)]},
-            config={"recursion_limit": MAX_ITERATIONS * 2 + 4},
+            config={
+                "configurable": {"thread_id": session_id},
+                "recursion_limit": MAX_ITERATIONS * 2 + 4,
+            },
             stream_mode="updates",
             subgraphs=True,
         )
@@ -213,12 +222,14 @@ def run_cli(session_id: Optional[str] = None) -> None:
     """Run the interactive REPL.
 
     Args:
-        session_id: Reserved for Task 2 (persistent conversation memory).
-            Has no effect yet in Task 1.
+        session_id: The session identifier (Task 2). If omitted, falls back to
+            'default' — memory is always on, the same 'default' session is
+            reused across runs that don't specify --session.
     """
+    if not session_id:
+        session_id = "default"
     print(WELCOME)
-    if session_id:
-        print(f"{C.DIM}Session: {session_id} (memory hookup arrives in Task 2){C.RESET}")
+    print(f"{C.DIM}Session: {session_id}{C.RESET}")
     print()
 
     while True:
@@ -237,4 +248,4 @@ def run_cli(session_id: Optional[str] = None) -> None:
                 break
             continue
 
-        _run_one_turn(question)
+        _run_one_turn(question, session_id)

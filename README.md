@@ -14,8 +14,8 @@ The agent handles three kinds of queries:
 - **Out-of-scope** — anything unrelated to the dataset is politely
   declined ("Who is the president of France?").
 
-This is the Task 1 deliverable. Tasks 2 (memory) and 3 (MCP server)
-will be added on top of this foundation.
+This repo currently covers **Task 1 and Task 2 (full memory)**. Task 3
+(MCP server) will be added on top of this foundation.
 
 ---
 
@@ -153,25 +153,85 @@ requirement.
 
 ---
 
+## Memory (Task 2)
+
+The agent has two complementary memory layers, both persistent across
+restarts.
+
+### 2a. Episodic memory — conversation history per session
+
+Powered by LangGraph's `SqliteSaver` checkpointer (file:
+`checkpoints.sqlite`). Pass `--session <id>` and the same id will
+restore the same conversation, even after restarting the CLI:
+
+```bash
+python main.py --session naomi
+# > Show me 3 examples from the REFUND category
+# > /exit
+
+python main.py --session naomi   # new process, same session
+# > Show me 3 more         ← agent knows "more" means REFUND
+```
+
+If you omit `--session`, the CLI uses the session `default` — memory is
+always on; different `--session` values produce independent threads
+with no shared history.
+
+The router is conversation-aware: it sees the recent turns when
+classifying the latest question, so follow-ups like *"what about
+refunds?"* or *"total of the last two?"* are correctly classified as
+in-scope and the agent does arithmetic over earlier answers without
+re-querying the data.
+
+### 2b. User profile — durable facts per user
+
+A separate Markdown file per user under `context/<session>.md` (e.g.
+`context/naomi.md`). After every turn, a small "summary node" reads the
+current profile + latest exchange and asks `Qwen/Qwen3-30B-A3B-Instruct-2507`
+(the cheap router model) whether anything new and durable should be
+added. The profile is then injected into the agent's system prompt on
+subsequent turns, so questions like *"What do you remember about me?"*
+are answered from the profile without calling any data tools.
+
+Profiles capture durable facts only (name, role, recurring interests,
+preferences) — not a replay of past messages.
+
+Example profile after introducing yourself:
+```markdown
+- Name: Naomi
+- Role: Data Analyst
+- Company: Nebius
+- Long-term interest: refund patterns in customer-support data
+```
+
+Both `checkpoints.sqlite` and `context/` are `.gitignore`d (runtime
+state, not source).
+
+---
+
 ## Repo layout
 
 ```
 naomi submission/
 ├── data/
 │   └── bitext_dataset.csv      # downloaded on first run
+├── context/                    # per-user profile MD files (Task 2b)
 ├── src/
 │   ├── __init__.py
 │   ├── config.py               # model names + ChatOpenAI factory
 │   ├── data_loader.py          # downloads / caches the CSV
 │   ├── tools.py                # 6 tools + Pydantic input schemas
-│   ├── router.py               # query classifier (structured/...)
-│   ├── agent.py                # LangGraph wiring + run_agent()
+│   ├── router.py               # query classifier (conversation-aware)
+│   ├── agent.py                # LangGraph wiring + checkpointer + run_agent()
+│   ├── memory.py               # profile load/save + summary node (Task 2b)
 │   └── cli.py                  # interactive REPL with reasoning trace
-├── main.py                     # entry point (python main.py)
+├── main.py                     # entry point (python main.py [--session id])
+├── checkpoints.sqlite          # created at runtime (Task 2a)
 ├── requirements.txt
 ├── .env.example
 ├── .gitignore
-├── tests_output.txt            # captured run of all 8 example queries
+├── tests_output.txt            # captured run of all 8 Task 1 example queries
+├── tests_output_task2.txt      # captured runs of all 3 Task 2 scenarios
 ├── PLAN.md                     # planning document (kept for reference)
 └── README.md
 ```
@@ -217,19 +277,7 @@ smaller parts?
 
 ---
 
-## What's next (Tasks 2 & 3)
-
-The CLI already accepts a `--session <id>` argument for forward
-compatibility:
-
-```bash
-python main.py --session my_session
-```
-
-In Task 1 this has no effect, but Task 2 will hook a LangGraph
-checkpointer (likely `SqliteSaver`) onto the graph and use the
-session ID as the thread ID, giving the agent persistent
-conversation memory across restarts.
+## What's next (Task 3)
 
 Task 3 will expose three of the tools (`list_categories`,
 `count_rows`, `get_examples`) over a FastMCP server, with a short
