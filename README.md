@@ -14,8 +14,8 @@ The agent handles three kinds of queries:
 - **Out-of-scope** — anything unrelated to the dataset is politely
   declined ("Who is the president of France?").
 
-This repo currently covers **Task 1 and Task 2 (full memory)**. Task 3
-(MCP server) will be added on top of this foundation.
+This repo covers **Tasks 1, 2, and 3** — the full agent, persistent
+memory, and an MCP server exposing the same tools to external clients.
 
 ---
 
@@ -225,7 +225,8 @@ naomi submission/
 │   ├── agent.py                # LangGraph wiring + checkpointer + run_agent()
 │   ├── memory.py               # profile load/save + summary node (Task 2b)
 │   └── cli.py                  # interactive REPL with reasoning trace
-├── main.py                     # entry point (python main.py [--session id])
+├── main.py                     # CLI entry point (python main.py [--session id])
+├── mcp_server.py               # MCP server entry point (Task 3)
 ├── checkpoints.sqlite          # created at runtime (Task 2a)
 ├── requirements.txt
 ├── .env.example
@@ -277,11 +278,107 @@ smaller parts?
 
 ---
 
-## What's next (Task 3)
+## MCP Server (Task 3)
 
-Task 3 will expose three of the tools (`list_categories`,
-`count_rows`, `get_examples`) over a FastMCP server, with a short
-client snippet in this README's "How to connect" section.
+A standalone FastMCP server in [`mcp_server.py`](mcp_server.py) exposes
+all six data-analyst tools over the Model Context Protocol, so any
+MCP-compatible client (Claude Desktop, Cursor, a custom Python client,
+etc.) can call them.
+
+Exposed tools (the same 6 the agent uses, re-registered with
+`@mcp.tool`):
+
+- `list_categories`
+- `list_intents`
+- `count_rows`
+- `get_examples`
+- `intent_distribution`
+- `get_texts_for_summary`
+
+### Starting the server
+
+The MCP server is a SEPARATE process from the CLI agent and speaks
+STDIO transport — the MCP default that Claude Desktop, Cursor, and
+the FastMCP `Client` use:
+
+```bash
+python mcp_server.py
+```
+
+You usually don't run the server manually — MCP clients launch it
+as a subprocess on demand. The example below shows exactly that.
+
+### Connecting a client
+
+This Python snippet uses FastMCP's `Client` to talk to the server.
+It works whether you've already started the server or not — with
+STDIO, the client launches the server itself.
+
+```python
+import asyncio
+from fastmcp import Client
+
+
+async def main():
+    # STDIO transport: Client launches `python mcp_server.py` for you.
+    async with Client("mcp_server.py") as client:
+        # 1. Discover what tools the server exposes
+        tools = await client.list_tools()
+        print(f"{len(tools)} tools available:")
+        for t in tools:
+            print(f"  - {t.name}")
+
+        # 2. Call one of them
+        result = await client.call_tool(
+            "count_rows", {"intent": "get_refund"}
+        )
+        print(f"\ncount_rows(intent='get_refund') -> {result.data}")
+        # Expected: {'count': 997, 'filters_applied': {'category': None,
+        #            'intent': 'get_refund'}}
+
+
+asyncio.run(main())
+```
+
+Save the snippet as `mcp_client_demo.py` (or paste it into a REPL)
+and run it with `python mcp_client_demo.py`. You should see the six
+tool names followed by the refund count.
+
+### Alternative: connect from Claude Desktop
+
+Instead of (or in addition to) the Python client above, you can expose
+the same six tools directly to Claude Desktop as a "native" MCP server.
+
+1. Open Claude Desktop → **Settings** → **Developer** → **Edit Config**.
+   This opens `claude_desktop_config.json`.
+2. Add (or merge into) the `mcpServers` block:
+
+   ```json
+   {
+     "mcpServers": {
+       "bitext-analyst": {
+         "command": "/ABSOLUTE/PATH/TO/venv/bin/python",
+         "args": [
+           "/ABSOLUTE/PATH/TO/naomi submission/mcp_server.py"
+         ]
+       }
+     }
+   }
+   ```
+
+   Replace both paths with the absolute paths on your machine. The
+   `command` must point at the **Python inside this project's venv**
+   (so the server has access to the right dependencies); on Windows
+   it would be `...\venv\Scripts\python.exe`.
+
+3. Quit Claude Desktop fully and reopen it. The six tools
+   (`list_categories`, `count_rows`, `get_examples`,
+   `intent_distribution`, `list_intents`, `get_texts_for_summary`)
+   now appear under the "🔌" tools menu and Claude can call them
+   in conversation, e.g.:
+
+   > *"Using the bitext-analyst tools, how many refund requests are
+   > in the dataset?"*
 
 ---
 

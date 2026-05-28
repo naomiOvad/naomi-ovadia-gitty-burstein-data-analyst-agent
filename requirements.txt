@@ -7,3 +7,4 @@ python-dotenv>=1.0.0,<2.0.0
 datasets>=3.0.0,<4.0.0
 truststore>=0.10.0,<1.0.0
 langgraph-checkpoint-sqlite>=2.0,<3.0
+fastmcp>=3.0,<4.0
