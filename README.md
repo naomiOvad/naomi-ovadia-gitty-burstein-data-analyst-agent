@@ -14,9 +14,10 @@ The agent handles three kinds of queries:
 - **Out-of-scope** — anything unrelated to the dataset is politely
   declined ("Who is the president of France?").
 
-This repo covers **Tasks 1, 2, 3, and Bonus A** — the full agent,
-persistent memory, an MCP server exposing the same tools to external
-clients, and a Streamlit chat UI.
+This repo covers **Tasks 1, 2, 3, and Bonuses A + B** — the full
+agent, persistent memory, an MCP server exposing the same tools to
+external clients, a Streamlit chat UI, and an interactive query
+recommender.
 
 ---
 
@@ -417,6 +418,44 @@ results) inline as the agent works — not just the final answer.
   CLI is fully recoverable in the browser (and vice versa).
 - **Per-user profile.** The summary node still runs after every turn,
   so `context/<session>.md` keeps growing across both UIs.
+
+---
+
+## Query Recommender (Bonus B)
+
+When the user asks for ideas ("what should I query next?", "any
+suggestions?", "got any ideas?"), the agent enters a recommendation
+flow defined entirely in the agent's system prompt
+([`AGENT_SYSTEM_PROMPT`](src/agent.py) — "RECOMMENDATION MODE"):
+
+1. It reads the conversation history and the per-user profile to find
+   topics the user cares about.
+2. It proposes ONE concrete query in natural language and ends with a
+   confirmation question — **no tool is called yet**.
+3. If the user refines the suggestion (e.g. "I'd rather see examples
+   instead"), the agent revises and asks again — **still no tool**.
+4. Only an unambiguous yes ("yes", "go ahead", "do it") triggers the
+   tool call. A decline ("no thanks") drops the suggestion politely.
+
+Works in both the CLI and the Streamlit UI, because both go through
+the same graph. The exact assignment example flow is reproduced:
+
+```
+You: What should I query next?
+🤖 (suggestion — e.g. "list of categories might be a good start;
+   want me to show it?")            ← no tool call
+
+You: I'd rather see examples instead.
+🤖 (refined suggestion — e.g. "5 random examples from the ACCOUNT
+   category; should I go ahead?")   ← no tool call
+
+You: Yes, do it.
+🤖 [Tool call] get_examples(n=3, category='ACCOUNT')
+   …results…                        ← tool call now
+```
+
+The router was also updated so suggestion-seeking phrases are
+classified as `structured` (in-scope) instead of being rejected.
 
 ---
 

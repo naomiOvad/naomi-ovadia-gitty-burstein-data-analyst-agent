@@ -123,6 +123,18 @@ Personal / profile-related messages (also important):
 - Only classify as out_of_scope if the question is BOTH unrelated to the
   dataset AND not about the user themselves.
 
+Query-recommendation requests (also in-scope):
+- When the user asks the agent for IDEAS about what to explore next,
+  this is in-scope (the agent will look at history + profile and
+  suggest a dataset query). Classify as 'structured'.
+  Examples: "what should I query next?", "any suggestions?", "what
+  else can I look at?", "got any ideas?", "where should I go from
+  here?".
+- Confirmations/refinements that come right after such a suggestion
+  ("yes, do it", "go ahead", "I'd rather see examples", "what about
+  SHIPPING?") are also 'structured' — they continue the same
+  recommendation flow.
+
 Return your classification and a one-sentence reason."""
 
 
