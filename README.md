@@ -14,8 +14,9 @@ The agent handles three kinds of queries:
 - **Out-of-scope** — anything unrelated to the dataset is politely
   declined ("Who is the president of France?").
 
-This repo covers **Tasks 1, 2, and 3** — the full agent, persistent
-memory, and an MCP server exposing the same tools to external clients.
+This repo covers **Tasks 1, 2, 3, and Bonus A** — the full agent,
+persistent memory, an MCP server exposing the same tools to external
+clients, and a Streamlit chat UI.
 
 ---
 
@@ -227,6 +228,7 @@ naomi submission/
 │   └── cli.py                  # interactive REPL with reasoning trace
 ├── main.py                     # CLI entry point (python main.py [--session id])
 ├── mcp_server.py               # MCP server entry point (Task 3)
+├── streamlit_app.py            # Streamlit chat UI entry point (Bonus A)
 ├── checkpoints.sqlite          # created at runtime (Task 2a)
 ├── requirements.txt
 ├── .env.example
@@ -379,6 +381,42 @@ the same six tools directly to Claude Desktop as a "native" MCP server.
 
    > *"Using the bitext-analyst tools, how many refund requests are
    > in the dataset?"*
+
+---
+
+## Streamlit UI (Bonus A)
+
+A browser chat wrapper around the same agent, in
+[`streamlit_app.py`](streamlit_app.py).
+
+### Run it
+
+```bash
+streamlit run streamlit_app.py
+```
+
+Streamlit opens `http://localhost:8501` automatically. The page has a
+chat input at the bottom, a session-ID box in the sidebar, and renders
+the **full reasoning trace** (router decision, tool calls, tool
+results) inline as the agent works — not just the final answer.
+
+### Features
+
+- **Live reasoning trace.** Each turn opens a collapsible status box
+  ("🧠 Thinking…") that streams the router's decision (`🔀`), each
+  tool call (`🔧`), and each tool result (`📊`, JSON-pretty-printed)
+  as they happen. When the agent finishes the box collapses to
+  "✅ Reasoning complete" — click to expand and review.
+- **Session ID in the sidebar.** Type any session id; switching it
+  saves the in-progress chat back to its thread and reloads the new
+  session's history from the LangGraph SQLite checkpointer. A toast
+  ("📂 Resumed session X (N prior messages)") confirms the load.
+  Brand-new ids start with an empty chat.
+- **Same memory as the CLI.** The Streamlit UI and `python main.py`
+  share `checkpoints.sqlite`, so a conversation you started in the
+  CLI is fully recoverable in the browser (and vice versa).
+- **Per-user profile.** The summary node still runs after every turn,
+  so `context/<session>.md` keeps growing across both UIs.
 
 ---
 
